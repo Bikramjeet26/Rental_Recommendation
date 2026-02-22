@@ -9,19 +9,39 @@ The core of this project is capturing user intent through "journeys." By combini
 
 
 ## Data Engineering Pipeline
-A significant portion of this project involved unifying multiple data sources to create a clean training set:
+The preprocessing pipeline was designed to transform unstructured web traffic data into a structured format suitable for sequential modeling.
 
-    Metrika Integration: Merged web analytics (Hits and Visits) into a single unified dataframe to track chronological user movements.
+### 1. Metrika Data Consolidation
+    Temporal Alignment: Merged Metrika Hits and Visits logs to reconstruct a chronological "User Journey."
 
-    Cross-Site Mapping: Reconciled product slugs from both the "New Site" and "Old Site" CSV catalogs to ensure consistent product identification.
+    Session Reconstruction: Grouped interactions by unique user identifiers to identify distinct browsing sessions.
+### 2. Cross-Catalog Harmonization
+    Entity Resolution: Mapped inconsistent product identifiers between "Old Site" and "New Site" schemas using a unified slug-to-ID dictionary.
 
-    Slug-to-ID Mapping: Created a high-performance dictionary mapping unique slugs to global Product IDs across three different dataframes.
+    Cold-Start Handling: Implemented an UNKNOWN token mapping for products not found in the primary catalogs to maintain sequence integrity.
+### 3. Feature Engineering
+    Embedding Vectorization: Parsed 768-dimensional product embeddings from string-based CSV storage into high-performance float32 tensors.
 
-    Embedding Transformation: Processed 768-dimensional embeddings, converting string-based storage into optimized NumPy tensors for model consumption.
+    Sliding Window Generation: Developed a custom SlidingWindowDataset to slice long journeys into multiple training samples, allowing the model to learn from every step of the sequence.
 
-## Model Architecture
-Type: Many-to-One 
-LSTMLayers: 2-layer Stacked LSTM with a hidden dimension of 512.
-Input: 768-dimensional vector sequences (Word/Product Embeddings).
-Feature Engineering: Implemented a SlidingWindowDataset to create training     samples from variable-length journeys.
-Optimization: Adam Optimizer ($lr=0.01$) with Cross-Entropy Loss.
+## Model Architecture & Training
+The recommendation engine uses a Many-to-One Recurrent Neural Network (RNN) to predict the next item in a sequence based on short-term historical context.
+
+### 1. Model Topology
+    Input Layer: Accepts a variable-length sequence of 768-dimensional embedding vectors.
+    
+    Hidden Layers: A 2-layer stacked LSTM (Long Short-Term Memory) with 512 hidden units to capture long-range dependencies and mitigate the vanishing gradient problem.
+    
+    Regularization: Integrated Dropout (0.2) between LSTM layers to prevent overfitting on specific user journey patterns.
+    
+    Output Layer: A Dense Linear layer mapping hidden states to the total number of unique product classes.
+
+### 2. Training Strategy
+    Sequence Packing: Utilized PyTorch’s pack_padded_sequence to handle variable-length inputs efficiently within batches, ignoring "padding" tokens during the backward pass.
+
+    Optimization: Used the Adam Optimizer ($lr=0.01$) and CrossEntropyLoss for multi-class classification.
+
+    Validation: Performed an 80/20 split at the journey level (rather than the sample level) to ensure the model was tested on entirely unseen user behaviors.
+
+### 3. Evaluation Metrics
+    Recall@6: The primary success metric. Because the goal is to provide a "Top 6" recommendation list, the model is considered successful if the ground-truth product appears within the top 6 predicted logits.
